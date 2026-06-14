@@ -1,0 +1,116 @@
+name: Build and Push Docker Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Image tag (e.g., v4.10.7-fix1)'
+        required: true
+        type: string
+
+permissions:
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/napcat-docker
+
+jobs:
+  build-shell:
+    name: Build NapCat.Shell
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+
+      - name: Use Node.js 20.x
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20.x
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile || pnpm install
+
+      - name: Build WebUI Frontend
+        run: pnpm --filter napcat-webui-frontend run build || exit 1
+
+      - name: Build NapCat Shell
+        run: pnpm run build:shell || exit 1
+
+      - name: Build Plugin Builtin
+        run: pnpm --filter napcat-plugin-builtin run build || exit 1
+
+      - name: Package Shell Distribution
+        run: |
+          mkdir -p shell-dist
+          cp -r packages/napcat-shell/dist/* shell-dist/
+          cd shell-dist
+          npm install --omit=dev
+          rm -f package-lock.json
+          cd ..
+          cd shell-dist
+          zip -qr ../NapCat.Shell.zip .
+          cd ..
+
+      - name: Upload Shell Artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: NapCat.Shell
+          path: NapCat.Shell.zip
+
+  build-docker:
+    name: Build and Push Docker Image
+    needs: build-shell
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout NapCat-Docker
+        uses: actions/checkout@v4
+        with:
+          repository: NapNeko/NapCat-Docker
+          ref: main
+          path: napcat-docker
+
+      - name: Download Shell Artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: NapCat.Shell
+          path: napcat-docker
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ inputs.tag }}
+            type=raw,value=latest
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./napcat-docker
+          file: ./napcat-docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
