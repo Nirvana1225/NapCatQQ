@@ -242,6 +242,49 @@ export class NapCatCore {
       this.context.logger.logError(tips);
       this.selfInfo.online = false;
       this.event.emit('KickedOffLine', tips);
+
+      // [FIX] 自动重连：被踢下线后延迟尝试快速登录重连
+      // 避免频繁重连，首次延迟30秒，之后指数退避
+      let reconnectAttempt = 0;
+      const maxAttempts = 5;
+      const attemptReconnect = () => {
+        if (this.selfInfo.online) {
+          this.context.logger.log('[KickedOffLine] 已恢复在线，停止重连');
+          return;
+        }
+        if (reconnectAttempt >= maxAttempts) {
+          this.context.logger.logError('[KickedOffLine] 重连失败次数已达上限，请手动重新登录');
+          return;
+        }
+        reconnectAttempt++;
+        const delay = Math.min(30000 * Math.pow(1.5, reconnectAttempt - 1), 300000); // 30s -> 300s
+        this.context.logger.log(`[KickedOffLine] 将在 ${Math.round(delay / 1000)} 秒后尝试第 ${reconnectAttempt}/${maxAttempts} 次重连...`);
+        setTimeout(() => {
+          if (this.selfInfo.online) return;
+          try {
+            // 尝试通过快速登录重连
+            const msfService = this.context.session.getMSFService();
+            if (msfService && typeof msfService.reconnect === 'function') {
+              msfService.reconnect();
+              this.context.logger.log('[KickedOffLine] 已调用 MSF 重连');
+            }
+            // 触发 OnlineApi 检查连接状态
+            this.apis.OnlineApi.fetchOnlineStatus().then((status: any) => {
+              this.context.logger.log('[KickedOffLine] 在线状态检查结果:', JSON.stringify(status));
+            }).catch(() => {});
+          } catch (e) {
+            this.context.logger.logError('[KickedOffLine] 重连异常:', e);
+          }
+          // 5秒后检查是否恢复在线
+          setTimeout(() => {
+            if (!this.selfInfo.online) {
+              this.context.logger.logWarn('[KickedOffLine] 重连后仍未在线，将继续尝试');
+              attemptReconnect();
+            }
+          }, 5000);
+        }, delay);
+      };
+      attemptReconnect();
     };
     msgListener.onRecvMsg = (msgs) => {
       msgs.forEach(msg => this.context.logger.logMessage(msg, this.selfInfo));

@@ -29,6 +29,36 @@ export class NTEventWrapper {
     wrapperSession: NodeIQQNTWrapperSession
   ) {
     this.WrapperSession = wrapperSession;
+
+    // [FIX] 定时清理过期 EventTask 条目，防止内存泄漏
+    // 原实现仅在事件触发时清理，如果事件长期不触发则条目永不释放
+    const cleanupTimer = setInterval(() => {
+      const now = Date.now();
+      let cleaned = 0;
+      for (const [mainName, subMap] of this.EventTask) {
+        for (const [subName, taskMap] of subMap) {
+          for (const [uuid, task] of taskMap) {
+            if (task.createtime + task.timeout < now) {
+              taskMap.delete(uuid);
+              cleaned++;
+            }
+          }
+          // 清理空的子 Map
+          if (taskMap.size === 0) {
+            subMap.delete(subName);
+          }
+        }
+        // 清理空的主 Map
+        if (subMap.size === 0) {
+          this.EventTask.delete(mainName);
+        }
+      }
+      if (cleaned > 0) {
+        // 仅在清理了条目时输出日志，避免刷屏
+        // console.log(`[NTEventWrapper] Cleaned ${cleaned} expired EventTask entries`);
+      }
+    }, 60000); // 每分钟清理一次
+    cleanupTimer.unref(); // 不阻止进程退出
   }
 
   createProxyDispatch (ListenerMainName: string) {

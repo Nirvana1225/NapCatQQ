@@ -12,6 +12,7 @@ import json5 from 'json5';
 export class OB11WebSocketClientAdapter extends IOB11NetworkAdapter<WebsocketClientConfig> {
   private connection: WebSocket | null = null;
   private heartbeatRef: NodeJS.Timeout | null = null;
+  private reconnectTimer: NodeJS.Timeout | null = null; // [FIX] 跟踪重连定时器，close 时可取消
 
   override get isActive (): boolean {
     return this.isEnable && !!this.connection && this.connection.readyState === WebSocket.OPEN;
@@ -48,6 +49,11 @@ export class OB11WebSocketClientAdapter extends IOB11NetworkAdapter<WebsocketCli
       return;
     }
     this.isEnable = false;
+    // [FIX] 取消待执行的重连定时器
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     if (this.connection) {
       this.connection.close();
       this.connection = null;
@@ -110,7 +116,11 @@ export class OB11WebSocketClientAdapter extends IOB11NetworkAdapter<WebsocketCli
           this.logger.logError(`[OneBot] [WebSocket Client] 在 ${Math.floor(this.config.reconnectInterval / 1000)} 秒后尝试重新连接`);
           if (this.isEnable) {
             this.connection = null;
-            setTimeout(() => this.tryConnect(), this.config.reconnectInterval);
+            // [FIX] 使用可追踪的 reconnectTimer 替代匿名 setTimeout
+            this.reconnectTimer = setTimeout(() => {
+              this.reconnectTimer = null;
+              this.tryConnect();
+            }, this.config.reconnectInterval);
           }
         }
       });
@@ -120,7 +130,11 @@ export class OB11WebSocketClientAdapter extends IOB11NetworkAdapter<WebsocketCli
         this.logger.logError(`[OneBot] [WebSocket Client] 在 ${Math.floor(this.config.reconnectInterval / 1000)} 秒后尝试重新连接`);
         if (this.isEnable) {
           this.connection = null;
-          setTimeout(() => this.tryConnect(), this.config.reconnectInterval);
+          // [FIX] 使用可追踪的 reconnectTimer 替代匿名 setTimeout
+          this.reconnectTimer = setTimeout(() => {
+            this.reconnectTimer = null;
+            this.tryConnect();
+          }, this.config.reconnectInterval);
         }
       });
     }
