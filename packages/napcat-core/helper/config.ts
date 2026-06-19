@@ -9,12 +9,12 @@ import fs from 'node:fs';
 import json5 from 'json5';
 
 export const BypassOptionsSchema = Type.Object({
-  hook: Type.Boolean({ default: true }),
-  window: Type.Boolean({ default: true }),
-  module: Type.Boolean({ default: true }),
-  process: Type.Boolean({ default: true }),
-  container: Type.Boolean({ default: true }),
-  js: Type.Boolean({ default: true }),
+  hook: Type.Boolean({ default: false }),
+  window: Type.Boolean({ default: false }),
+  module: Type.Boolean({ default: false }),
+  process: Type.Boolean({ default: false }),
+  container: Type.Boolean({ default: false }),
+  js: Type.Boolean({ default: false }),
 });
 
 export const NapcatConfigSchema = Type.Object({
@@ -24,7 +24,7 @@ export const NapcatConfigSchema = Type.Object({
   consoleLogLevel: Type.String({ default: 'info' }),
   packetBackend: Type.String({ default: 'auto' }),
   packetServer: Type.String({ default: '' }),
-  o3HookMode: Type.Number({ default: 0 }),
+  o3HookMode: Type.Number({ default: 1 }),
   autoTimeSync: Type.Boolean({ default: true }),
   bypass: Type.Optional(BypassOptionsSchema),
 });
