@@ -19,7 +19,7 @@ const WebsocketClientConfigSchema = Type.Object({
   enable: Type.Boolean({ default: false }),
   url: Type.String({ default: 'ws://localhost:6701' }),
   token: Type.String({ default: '' }),
-  reconnectInterval: Type.Number({ default: 5000 }),
+  reconnectInterval: Type.Number({ default: 30000 }),
   heartInterval: Type.Number({ default: 30000 }),
   debug: Type.Boolean({ default: false }),
 });
