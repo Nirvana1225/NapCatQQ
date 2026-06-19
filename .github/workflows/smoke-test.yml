@@ -1,0 +1,88 @@
+name: Smoke Test Docker Image
+
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke-test:
+    name: Pull and Test Docker Image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull image from GHCR
+        run: |
+          echo "Pulling ghcr.io/nirvana1225/napcat-docker:latest..."
+          docker pull ghcr.io/nirvana1225/napcat-docker:latest
+          echo "Image pulled successfully"
+
+      - name: Inspect image
+        run: |
+          echo "=== Image Info ==="
+          docker images ghcr.io/nirvana1225/napcat-docker:latest
+          echo ""
+          echo "=== Image Inspect ==="
+          docker inspect ghcr.io/nirvana1225/napcat-docker:latest --format='{{.Os}}/{{.Architecture}} | Created: {{.Created}} | Size: {{.Size}}'
+
+      - name: Run container and test startup
+        run: |
+          echo "Starting container..."
+          docker run -d \
+            --name napcat-test \
+            -e NAPCAT_GID=0 \
+            -e NAPCAT_UID=0 \
+            -p 6099:6099 \
+            ghcr.io/nirvana1225/napcat-docker:latest
+
+          echo "Container started, waiting 15s for initialization..."
+          sleep 15
+
+          echo "=== Container Status ==="
+          docker ps -a --filter name=napcat-test
+
+          echo ""
+          echo "=== Container Logs (last 80 lines) ==="
+          docker logs napcat-test 2>&1 | tail -80
+
+      - name: Test WebUI port accessibility
+        run: |
+          echo "Testing WebUI port 6099..."
+          sleep 5
+          curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" http://localhost:6099/ || echo "Port not ready yet"
+          echo ""
+          echo "Trying to get WebUI page..."
+          curl -s http://localhost:6099/ 2>&1 | head -20 || echo "No response"
+
+      - name: Check NapCat config defaults
+        run: |
+          echo "=== Checking napcat.json defaults ==="
+          docker exec napcat-test cat /app/napcat/config/napcat.json 2>/dev/null || echo "napcat.json not found (may not be generated yet)"
+
+          echo ""
+          echo "=== Checking if napcat.mjs exists ==="
+          docker exec napcat-test ls -la /app/napcat/napcat.mjs 2>/dev/null || echo "napcat.mjs not found"
+
+          echo ""
+          echo "=== Checking loadNapCat.js ==="
+          docker exec napcat-test cat /opt/QQ/resources/app/loadNapCat.js 2>/dev/null || echo "loadNapCat.js not found"
+
+      - name: Verify bug fixes in built code
+        run: |
+          echo "=== Bug1: KickedOffLine auto-reconnect ==="
+          docker exec napcat-test grep -c "attemptReconnect" /app/napcat/napcat.mjs 2>/dev/null && echo "Bug1 fix FOUND" || echo "Bug1 fix NOT found"
+
+          echo ""
+          echo "=== Bug3: WebSocket reconnectTimer tracking ==="
+          docker exec napcat-test grep -c "reconnectTimer" /app/napcat/napcat.mjs 2>/dev/null && echo "Bug3 fix FOUND" || echo "Bug3 fix NOT found"
+
+          echo ""
+          echo "=== Config: o3HookMode default ==="
+          docker exec napcat-test grep -o 'o3HookMode.*default.*1' /app/napcat/napcat.mjs 2>/dev/null | head -1 || echo "Checking in compiled JS..."
+          docker exec napcat-test grep -c "o3HookMode" /app/napcat/napcat.mjs 2>/dev/null && echo "o3HookMode ref FOUND" || echo "o3HookMode NOT found"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          echo "=== Final container logs ==="
+          docker logs napcat-test 2>&1 | tail -40
+          echo ""
+          docker stop napcat-test 2>/dev/null || true
+          docker rm napcat-test 2>/dev/null || true
