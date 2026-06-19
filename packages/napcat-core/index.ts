@@ -262,16 +262,12 @@ export class NapCatCore {
         setTimeout(() => {
           if (this.selfInfo.online) return;
           try {
-            // 尝试通过快速登录重连
+            // 尝试通过 MSFService 重新上线
             const msfService = this.context.session.getMSFService();
-            if (msfService && typeof msfService.reconnect === 'function') {
-              msfService.reconnect();
-              this.context.logger.log('[KickedOffLine] 已调用 MSF 重连');
+            if (msfService) {
+              msfService.online();
+              this.context.logger.log('[KickedOffLine] 已调用 MSF online 重连');
             }
-            // 触发 OnlineApi 检查连接状态
-            this.apis.OnlineApi.fetchOnlineStatus().then((status: any) => {
-              this.context.logger.log('[KickedOffLine] 在线状态检查结果:', JSON.stringify(status));
-            }).catch(() => {});
           } catch (e) {
             this.context.logger.logError('[KickedOffLine] 重连异常:', e);
           }
