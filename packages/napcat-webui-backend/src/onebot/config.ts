@@ -55,7 +55,7 @@ const WebsocketClientConfigSchema = Type.Object({
   url: Type.String({ default: 'ws://localhost:8082' }),
   messagePostFormat: Type.String({ default: 'array' }),
   reportSelfMessage: Type.Boolean({ default: false }),
-  reconnectInterval: Type.Number({ default: 5000 }),
+  reconnectInterval: Type.Number({ default: 30000 }),
   token: Type.String({ default: '' }),
   debug: Type.Boolean({ default: false }),
   heartInterval: Type.Number({ default: 30000 }),
